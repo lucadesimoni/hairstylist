@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hairlist Widget — Demo</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1f2430; background: #f6f7f9; line-height: 1.55;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 48px 20px 120px; }
+    header h1 { font-size: 30px; margin: 0 0 6px; }
+    header p { color: #6b7280; margin: 0 0 28px; font-size: 16px; }
+    .card {
+      background: #fff; border: 1px solid #e6e9ef; border-radius: 16px;
+      padding: 22px; margin: 18px 0; box-shadow: 0 2px 14px rgba(0,0,0,.05);
+    }
+    .card h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: #8b93a1; margin: 0 0 14px; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #4b5563; margin: 12px 0 5px; }
+    input, select {
+      width: 100%; padding: 11px 12px; border: 1px solid #d7dbe2; border-radius: 10px;
+      font-size: 15px; background: #fff; color: inherit;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .row { display: flex; gap: 10px; align-items: flex-end; }
+    .row > div { flex: 1; }
+    button.apply {
+      padding: 11px 18px; border: 0; border-radius: 10px; background: #111827; color: #fff;
+      font-weight: 600; font-size: 15px; cursor: pointer; white-space: nowrap;
+    }
+    button.apply:hover { filter: brightness(1.12); }
+    code { background: #eef1f5; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+    pre {
+      background: #0f1420; color: #e6e9ef; padding: 16px; border-radius: 12px; overflow-x: auto;
+      font-size: 13px; line-height: 1.5;
+    }
+    .hint { font-size: 13px; color: #8b93a1; margin-top: 6px; }
+    #inline-mount { min-height: 200px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0f131a; color: #e6e9ef; }
+      .card { background: #161a22; border-color: #262c37; }
+      input, select { background: #12151c; border-color: #2a313d; color: #e6e9ef; }
+      button.apply { background: #e6e9ef; color: #12151c; }
+      code { background: #232936; }
+    }
+    @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } .row { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>💇 Hairlist Widget</h1>
+      <p>A pluggable booking &amp; hairstylist-info widget for any website. Enter a shop key below to load that salon's full booking experience.</p>
+    </header>
+
+    <!-- Shop configurator: the key is enterable for a specific shop -->
+    <div class="card">
+      <h2>Configure your shop</h2>
+      <div class="row">
+        <div>
+          <label for="shop">Shop key (hairlist subdomain)</label>
+          <input id="shop" type="text" value="steiner" placeholder="e.g. steiner" autocomplete="off">
+          <div class="hint">Maps to <code>&lt;key&gt;.hairlist.ch/termin</code>. This is the identifier for a specific shop.</div>
+        </div>
+        <button class="apply" id="apply">Load shop</button>
+      </div>
+
+      <div class="grid" style="margin-top:8px">
+        <div>
+          <label for="apikey">Booking key (optional)</label>
+          <input id="apikey" type="text" placeholder="Shop API/booking key" autocomplete="off">
+          <div class="hint">Passed to the booking page as <code>?key=…</code> when set.</div>
+        </div>
+        <div>
+          <label for="lang">Language</label>
+          <select id="lang">
+            <option value="de">Deutsch</option>
+            <option value="fr">Français</option>
+            <option value="it">Italiano</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div>
+          <label for="mode">Mode</label>
+          <select id="mode">
+            <option value="modal">Floating button + modal</option>
+            <option value="inline">Inline embed</option>
+          </select>
+        </div>
+        <div>
+          <label for="color">Accent color</label>
+          <input id="color" type="color" value="#111827" style="height:44px;padding:4px">
+        </div>
+      </div>
+    </div>
+
+    <!-- Live embed target -->
+    <div class="card">
+      <h2>Live embed</h2>
+      <div id="inline-mount"></div>
+      <p class="hint" id="mode-note">A floating “Book appointment” button appears in the corner of this page. Click it to open the full booking flow in a modal.</p>
+    </div>
+
+    <!-- Copy-paste snippet -->
+    <div class="card">
+      <h2>Embed code for your website</h2>
+      <pre id="snippet"></pre>
+      <p class="hint">Drop this into any website — plain HTML, WordPress, Squarespace, etc. No build step, no dependencies.</p>
+    </div>
+  </div>
+
+  <!-- The widget itself. In production, point src at the hosted hairlist-widget.js
+       and set the data-* attributes; here we init programmatically so the demo
+       can reconfigure it live. data-auto="false" disables auto-init. -->
+  <script src="../hairlist-widget.js" data-auto="false"></script>
+  <script>
+    var current = null;
+
+    function buildConfig() {
+      var cfg = {
+        shop: document.getElementById('shop').value.trim(),
+        lang: document.getElementById('lang').value,
+        mode: document.getElementById('mode').value,
+        color: document.getElementById('color').value
+      };
+      var key = document.getElementById('apikey').value.trim();
+      if (key) cfg.key = key;
+      if (cfg.mode === 'inline') { cfg.mount = '#inline-mount'; cfg.height = '620px'; }
+      return cfg;
+    }
+
+    function snippetFor(cfg) {
+      var attrs = ['  data-shop="' + (cfg.shop || 'your-shop') + '"'];
+      if (cfg.key) attrs.push('  data-key="' + cfg.key + '"');
+      attrs.push('  data-lang="' + cfg.lang + '"');
+      attrs.push('  data-color="' + cfg.color + '"');
+      if (cfg.mode === 'inline') {
+        return '<!-- Where the booking should appear -->\n<div id="hairlist-booking"></div>\n\n' +
+          '<script src="https://your-cdn.example/hairlist-widget.js"\n' +
+          '  data-shop="' + (cfg.shop || 'your-shop') + '"\n' +
+          '  data-mode="inline"\n  data-mount="#hairlist-booking"\n' +
+          (cfg.key ? '  data-key="' + cfg.key + '"\n' : '') +
+          '  data-lang="' + cfg.lang + '"\n  data-color="' + cfg.color + '"><\/script>';
+      }
+      return '<script src="https://your-cdn.example/hairlist-widget.js"\n' +
+        attrs.join('\n') + '><\/script>';
+    }
+
+    function apply() {
+      if (current && current.destroy) current.destroy();
+      document.getElementById('inline-mount').innerHTML = '';
+      var cfg = buildConfig();
+      current = HairlistWidget.init(cfg);
+      document.getElementById('snippet').textContent = snippetFor(cfg);
+      document.getElementById('mode-note').style.display = cfg.mode === 'inline' ? 'none' : '';
+    }
+
+    document.getElementById('apply').addEventListener('click', apply);
+    document.getElementById('shop').addEventListener('keydown', function (e) { if (e.key === 'Enter') apply(); });
+    ['lang', 'mode', 'color'].forEach(function (id) {
+      document.getElementById(id).addEventListener('change', apply);
+    });
+    apply();
+  </script>
+</body>
+</html>

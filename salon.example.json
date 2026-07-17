@@ -1,0 +1,40 @@
+{
+  "$comment": "TEMPLATE — replace all values with your salon's real data. This optional file powers the info panel (hours, team, service menu, contact) shown next to the live booking frame. Booking availability itself always comes live from the hairlist booking page; this file is only for the static info summary.",
+  "name": "Your Salon Name",
+  "tagline": "Short one-line description of your salon",
+  "currency": "CHF",
+  "bookingUrl": "https://your-shop.hairlist.ch/termin",
+  "address": {
+    "street": "Musterstrasse 1",
+    "zip": "8000",
+    "city": "Zürich",
+    "country": "CH"
+  },
+  "phone": "+41 44 000 00 00",
+  "email": "hello@your-salon.example",
+  "website": "https://your-salon.example",
+  "hours": [
+    { "day": "Mo", "closed": true },
+    { "day": "Di", "open": "09:00", "close": "18:30" },
+    { "day": "Mi", "open": "09:00", "close": "18:30" },
+    { "day": "Do", "open": "09:00", "close": "20:00" },
+    { "day": "Fr", "open": "09:00", "close": "18:30" },
+    { "day": "Sa", "open": "08:00", "close": "16:00" },
+    { "day": "So", "closed": true }
+  ],
+  "services": [
+    { "category": "Damen", "name": "Waschen, Schneiden, Föhnen", "price": 75, "duration": 60, "priceFrom": true },
+    { "category": "Damen", "name": "Coloration", "price": 90, "duration": 90, "priceFrom": true },
+    { "category": "Herren", "name": "Waschen, Schneiden, Styling", "price": 55, "duration": 45 },
+    { "category": "Herren", "name": "Bartpflege", "price": 25, "duration": 20 },
+    { "category": "Kinder", "name": "Kinderschnitt (bis 12 J.)", "price": 30, "duration": 30 }
+  ],
+  "team": [
+    { "name": "Vorname Nachname", "role": "Inhaber:in / Stylist:in", "photo": null },
+    { "name": "Vorname Nachname", "role": "Stylist:in", "photo": null }
+  ],
+  "social": {
+    "instagram": "https://instagram.com/your-salon",
+    "facebook": "https://facebook.com/your-salon"
+  }
+}
