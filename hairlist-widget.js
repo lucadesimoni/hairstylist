@@ -270,10 +270,11 @@
       '.' + NS + '-fab:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(0,0,0,.28)}',
       '.' + NS + '-fab:focus-visible{outline:3px solid rgba(120,150,255,.6);outline-offset:2px}',
       '.' + NS + '-fab svg{width:1.15em;height:1.15em}',
-      '.' + NS + '-pos-bottom-right{right:20px;bottom:20px}',
-      '.' + NS + '-pos-bottom-left{left:20px;bottom:20px}',
-      '.' + NS + '-pos-top-right{right:20px;top:20px}',
-      '.' + NS + '-pos-top-left{left:20px;top:20px}',
+      // Positions respect iOS/Android safe-area insets (notch, home indicator).
+      '.' + NS + '-pos-bottom-right{right:calc(20px + env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom))}',
+      '.' + NS + '-pos-bottom-left{left:calc(20px + env(safe-area-inset-left));bottom:calc(20px + env(safe-area-inset-bottom))}',
+      '.' + NS + '-pos-top-right{right:calc(20px + env(safe-area-inset-right));top:calc(20px + env(safe-area-inset-top))}',
+      '.' + NS + '-pos-top-left{left:calc(20px + env(safe-area-inset-left));top:calc(20px + env(safe-area-inset-top))}',
 
       // Inline trigger button (mode=button, position=inline)
       '.' + NS + '-btn{display:inline-flex;align-items:center;gap:.55em;padding:.7em 1.15em;border-radius:10px;border:0;cursor:pointer;font-size:15px;font-weight:600;color:#fff;background:var(--' + NS + '-accent)}',
@@ -295,7 +296,7 @@
 
       // Body layout: info panel + booking frame
       '.' + NS + '-body{display:flex;flex:1;min-height:0}',
-      '.' + NS + '-info{flex:0 0 300px;max-width:300px;overflow-y:auto;padding:18px;border-right:1px solid #eceef2;background:#fafbfc}',
+      '.' + NS + '-info{flex:0 0 300px;max-width:300px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:18px;border-right:1px solid #eceef2;background:#fafbfc}',
       '.' + NS + '-frame-wrap{position:relative;flex:1;min-width:0;background:#fff}',
       '.' + NS + '-frame{border:0;width:100%;height:100%;display:block}',
 
@@ -338,12 +339,21 @@
       '.' + NS + '-powered{font-size:11px;color:#b3b9c4;text-align:center;padding:8px 0 2px}',
       '.' + NS + '-powered a{color:inherit}',
 
-      // Responsive: stack info panel above frame on narrow screens
+      // Responsive: full-screen modal + stacked info panel on phones.
       '@media (max-width:760px){',
-      '.' + NS + '-overlay{padding:0}',
-      '.' + NS + '-modal{width:100%;height:100%;border-radius:0}',
+      '.' + NS + '-overlay{padding:0;align-items:stretch}',
+      '.' + NS + '-modal{width:100%;height:100vh;height:100dvh;max-height:none;border-radius:0}',
+      // header sits below the status bar / notch
+      '.' + NS + '-head{padding-top:calc(14px + env(safe-area-inset-top));padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right))}',
+      '.' + NS + '-iconbtn{width:40px;height:40px}',
       '.' + NS + '-body{flex-direction:column}',
-      '.' + NS + '-info{flex:0 0 auto;max-width:none;max-height:38%;border-right:0;border-bottom:1px solid #eceef2}',
+      '.' + NS + '-info{flex:0 0 auto;max-width:none;max-height:42vh;border-right:0;border-bottom:1px solid #eceef2}',
+      '.' + NS + '-fab{font-size:14px;padding:.8em 1.15em}',
+      '}',
+      // Very small phones: let the booking frame dominate.
+      '@media (max-width:480px){',
+      '.' + NS + '-info{max-height:36vh}',
+      '.' + NS + '-fab span{max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '}',
 
       // Dark mode
@@ -621,7 +631,9 @@
       previouslyFocused = document.activeElement;
       build();
       document.body.appendChild(overlay);
+      // Lock background scroll (documentElement + body covers iOS Safari).
       document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
       // force reflow then animate in
       overlay.getBoundingClientRect();
       overlay.classList.add(NS + '-open');
@@ -640,6 +652,7 @@
       overlay.classList.remove(NS + '-open');
       document.removeEventListener('keydown', keyHandler);
       document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
       setTimeout(function () { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 200);
       overlay = null; modal = null;
       if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
