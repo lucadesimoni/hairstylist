@@ -169,7 +169,8 @@ An “open in new tab” affordance is present at all times regardless.
 | ------------------------ | ------- |
 | `hairlist-widget.js`     | The widget (drop-in, self-contained). |
 | `demo/index.html`        | Interactive demo — enter a shop key and preview. |
-| `salon.example.json`     | Template for the optional info panel. |
+| `demo/steiner.json`      | Filled-in **sample** info file used by the demo (Coiffeur Steiner). |
+| `salon.example.json`     | Blank template for the optional info panel. |
 
 ## Development / preview
 

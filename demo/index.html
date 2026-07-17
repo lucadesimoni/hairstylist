@@ -128,6 +128,8 @@
       };
       var key = document.getElementById('apikey').value.trim();
       if (key) cfg.key = key;
+      // The Steiner shop ships a sample info file for the info panel.
+      if (cfg.shop === 'steiner') cfg.info = 'steiner.json';
       if (cfg.mode === 'inline') { cfg.mount = '#inline-mount'; cfg.height = '620px'; }
       return cfg;
     }
