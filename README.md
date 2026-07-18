@@ -163,12 +163,61 @@ An “open in new tab” affordance is present at all times regardless.
 
 ---
 
+## Exchanging data with the hairlist API
+
+`hairlist-api.js` is a standalone, dependency-free client for exchanging data
+with a salon's hairlist API — reading services, staff, opening hours and
+availability, and writing bookings and customer accounts. The API is enabled
+per salon under **Settings → API Access** and authenticated with that salon's
+API key.
+
+```html
+<script src="hairlist-api.js"></script>
+<script>
+  var api = HairlistApi.create({
+    shop: 'steiner',                 // -> https://steiner.hairlist.ch/api
+    apiKey: 'YOUR_SALON_API_KEY',    // from Settings > API Access
+    onExchange: function (e) {       // observe every request (method, path, status, ms)
+      console.log(e.method, e.path, e.status + ' (' + e.ms + 'ms)');
+    }
+  });
+
+  api.getServices().then(renderMenu);
+  api.getAvailability({ serviceId, staffId, from: '2026-07-20', to: '2026-07-27' }).then(renderSlots);
+  api.createBooking({ serviceId, staffId, start: '2026-07-20T09:00:00', customer: {...} });
+  api.registerCustomer({ name, email, phone, password });
+  api.loginCustomer({ email, password });
+</script>
+```
+
+**Methods** — `getSalon()`, `getServices()`, `getStaff()`, `getAvailability()`
+(reads); `createBooking()`, `registerCustomer()`, `loginCustomer()` (writes).
+
+**Configurable to match your salon's API docs.** Because each hairlist
+installation can expose slightly different paths and field names, everything is
+adjustable in one place — sensible REST defaults are provided:
+
+| Option          | Default                        | Notes |
+| --------------- | ------------------------------ | ----- |
+| `shop` / `baseUrl` | `https://<shop>.hairlist.ch/api` | Base URL for all calls. |
+| `apiKey`        | —                              | Salon API key. |
+| `authScheme`    | `bearer`                       | `bearer` (Authorization: Bearer), `header` (`authHeaderName`), or `query` (`keyParam`). |
+| `endpoints`     | `/salon /services /staff /availability /bookings /customers /customers/login` | Override any path. |
+| `map`           | see source                     | Field mappers — map API field names to the widget's model. |
+| `transport`     | `fetch`                        | Inject a custom transport (proxy/mock) for testing. |
+| `onExchange`    | —                              | Callback fired for every request with `{method, path, status, ms, reqBody, resBody}`. |
+
+Confirm the exact endpoint paths and field names against your salon's official
+hairlist API documentation and adjust `endpoints` / `map` accordingly.
+
 ## Files
 
 | File                     | Purpose |
 | ------------------------ | ------- |
 | `hairlist-widget.js`     | The widget (drop-in, self-contained). |
+| `hairlist-api.js`        | Standalone client for exchanging data with the hairlist API. |
 | `demo/index.html`        | Interactive demo — enter a shop key and preview. |
+| `demo/booking-demo.html` | Self-contained working booking + registration flow, driven through `hairlist-api.js` with a live API-call log. |
 | `demo/steiner.json`      | Filled-in **sample** info file used by the demo (Coiffeur Steiner). |
 | `salon.example.json`     | Blank template for the optional info panel. |
 

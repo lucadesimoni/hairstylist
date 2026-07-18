@@ -186,6 +186,36 @@
   footer b{color:var(--ink)} a.inline{color:var(--brass-deep)}
   @media (max-width:560px){ .form-grid{grid-template-columns:1fr} .shell{padding:30px 15px 84px} .stepper .lbl{font-size:0} .stepper li .n{margin-bottom:0} }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* API exchange log */
+  .apilog{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+  .apilog-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .apilog-head code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .apilog-head button{font:inherit;font-size:11px;color:var(--brass-deep);background:transparent;border:1px solid var(--line);border-radius:6px;padding:3px 8px;cursor:pointer;flex:0 0 auto}
+  .apilog-list{max-height:240px;overflow:auto;-webkit-overflow-scrolling:touch;font-family:var(--mono);font-size:12px}
+  .apilog-empty{padding:16px;color:var(--muted);text-align:center}
+  .log-row{border-bottom:1px solid var(--line)}
+  .log-row:last-child{border-bottom:0}
+  .log-head2{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer}
+  .log-head2:hover{background:var(--panel)}
+  .log-method{font-weight:700;padding:2px 6px;border-radius:5px;font-size:10.5px;letter-spacing:.03em;flex:0 0 auto}
+  .log-method.GET{background:color-mix(in srgb,#3b82f6 18%,transparent);color:#2563eb}
+  .log-method.POST{background:color-mix(in srgb,var(--ok) 22%,transparent);color:var(--ok)}
+  .log-path{flex:1;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log-status{font-weight:700;flex:0 0 auto}
+  .log-status.ok{color:var(--ok)} .log-status.err{color:#c0392b}
+  .log-ms{color:var(--muted);flex:0 0 auto;min-width:44px;text-align:right}
+  .log-detail{display:none;padding:2px 12px 11px;white-space:pre-wrap;word-break:break-word;color:var(--muted);line-height:1.5}
+  .log-row.open .log-detail{display:block}
+  .log-detail b{color:var(--ink);font-weight:700}
+  .tag-live{font-family:var(--sans);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--ok);border-radius:999px;padding:2px 7px;font-weight:700;vertical-align:middle}
+  .note{font-size:12.5px;color:var(--muted);margin:10px 2px 0;display:flex;gap:8px}
+  .note svg{width:15px;height:15px;flex:0 0 auto;margin-top:2px;color:var(--brass-deep)}
+  .spin{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brass);animation:sp .8s linear infinite;margin:26px auto 12px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .loadwrap{text-align:center;padding:26px 0;color:var(--muted);font-size:14px}
+  @media (prefers-color-scheme:dark){ .log-method.GET{color:#7ab0ff} .log-status.err{color:#ff8a7a} }
+
 </style>
 
 <div class="shell">
@@ -193,7 +223,7 @@
   <h1>Termin buchen bei Ihrem Coiffeur</h1>
   <p class="lede">Eine vollständige, funktionierende Online-Terminbuchung — <b>direkt hier ausprobierbar</b>.
     Leistung, Mitarbeiter:in und Zeitfenster wählen, als Gast oder mit <b>Konto</b> buchen. Registrieren und
-    Anmelden sind ebenfalls dabei. Der <b>Shop-Key</b> ist pro Salon frei wählbar.</p>
+    Anmelden sind ebenfalls dabei. Alle Daten laufen über die <b>hairlist-API</b> (Protokoll unten). Der <b>Shop-Key</b> ist pro Salon frei wählbar.</p>
 
   <div class="browser">
     <div class="browser-bar">
@@ -234,6 +264,15 @@
       <button class="btn btn-primary" id="next" type="button" disabled>Weiter</button>
     </div>
   </div>
+
+  <div class="section-label">API-Datenaustausch <span class="tag-live">live</span></div>
+  <div class="apilog">
+    <div class="apilog-head"><code id="api-base">https://steiner.hairlist.ch/api</code>
+      <button id="log-clear" type="button">Leeren</button></div>
+    <div class="apilog-list" id="api-log-list"><div class="apilog-empty">Noch keine Aufrufe — starten Sie oben die Buchung.</div></div>
+  </div>
+  <p class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span>Jeder Schritt tauscht Daten über die <b>hairlist-API</b> aus — tippen Sie auf eine Zeile für Request/Response. In dieser Vorschau beantwortet ein eingebauter Mock die Aufrufe; auf Ihrer Website mit hinterlegtem <b>API-Key</b> gehen dieselben Aufrufe an die echte hairlist-API.</span></p>
 
   <div class="section-label">Konfigurieren</div>
   <div class="config">
@@ -277,148 +316,533 @@
 </div>
 
 <script>
+/*!
+ * Hairlist API client — a dependency-free wrapper for exchanging data with a
+ * hairlist.ch / Belbo salon's API. Reads salon data (services, staff, opening
+ * hours, availability) and writes bookings and customer accounts.
+ *
+ * The hairlist API is enabled per salon under Settings > API Access and is
+ * authenticated with that salon's API key. Because every hairlist installation
+ * can expose slightly different paths/field names, ALL endpoint paths and the
+ * response field mappings are configurable — point them at the values from your
+ * salon's official API docs. Sensible REST defaults are provided.
+ *
+ *   var api = HairlistApi.create({
+ *     shop: 'steiner',                     // -> https://steiner.hairlist.ch/api
+ *     apiKey: 'YOUR_SALON_API_KEY',
+ *     onExchange: function (e) { console.log(e.method, e.path, e.status); }
+ *   });
+ *   api.getServices().then(render);
+ *   api.createBooking({ serviceId, staffId, start, customer }).then(...);
+ *
+ * A `transport` can be injected to run the same code against a mock or proxy.
+ * License: MIT
+ */
+(function (global) {
+  'use strict';
+
+  var DEFAULT_ENDPOINTS = {
+    salon:        '/salon',            // GET  salon profile + opening hours
+    services:     '/services',         // GET  bookable services
+    staff:        '/staff',            // GET  stylists / calendars
+    availability: '/availability',     // GET  free slots for a service/staff/date range
+    bookings:     '/bookings',         // POST create an appointment
+    customers:    '/customers',        // POST register a customer
+    login:        '/customers/login'   // POST authenticate a customer
+  };
+
+  // Field mappers: read a value from an API object regardless of exact naming.
+  function pick(obj, keys, dflt) {
+    for (var i = 0; i < keys.length; i++) {
+      if (obj && obj[keys[i]] != null) return obj[keys[i]];
+    }
+    return dflt;
+  }
+
+  function create(opts) {
+    opts = opts || {};
+    var shop = opts.shop || null;
+    var baseUrl = (opts.baseUrl ||
+      (shop ? 'https://' + (/\./.test(shop) ? shop : shop + '.hairlist.ch') + '/api' : ''))
+      .replace(/\/+$/, '');
+    var apiKey = opts.apiKey || null;
+    var authScheme = opts.authScheme || 'bearer';      // 'bearer' | 'header' | 'query'
+    var authHeaderName = opts.authHeaderName || 'X-Api-Key';
+    var keyParam = opts.keyParam || 'api_key';
+    var lang = opts.lang || null;
+    var endpoints = Object.assign({}, DEFAULT_ENDPOINTS, opts.endpoints || {});
+    var transport = opts.transport || null;             // (method,url,{headers,body}) => Promise<{status,json,text}>
+    var onExchange = opts.onExchange || null;
+    var timeoutMs = opts.timeoutMs || 15000;
+
+    function buildUrl(path, query) {
+      var url = baseUrl + path;
+      var q = Object.assign({}, query || {});
+      if (apiKey && authScheme === 'query') q[keyParam] = apiKey;
+      if (lang) q.lang = lang;
+      var pairs = Object.keys(q).filter(function (k) { return q[k] != null; })
+        .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(q[k]); });
+      return pairs.length ? url + (url.indexOf('?') === -1 ? '?' : '&') + pairs.join('&') : url;
+    }
+
+    function headers(hasBody) {
+      var h = { 'Accept': 'application/json' };
+      if (hasBody) h['Content-Type'] = 'application/json';
+      if (apiKey && authScheme === 'bearer') h['Authorization'] = 'Bearer ' + apiKey;
+      if (apiKey && authScheme === 'header') h[authHeaderName] = apiKey;
+      return h;
+    }
+
+    function withTimeout(promise) {
+      if (typeof AbortController === 'undefined') return promise();
+      var ctrl = new AbortController();
+      var timer = setTimeout(function () { ctrl.abort(); }, timeoutMs);
+      return promise(ctrl.signal).then(
+        function (v) { clearTimeout(timer); return v; },
+        function (e) { clearTimeout(timer); throw e; }
+      );
+    }
+
+    function request(method, path, opts2) {
+      opts2 = opts2 || {};
+      var url = buildUrl(path, opts2.query);
+      var body = opts2.body;
+      var reqHeaders = headers(!!body);
+      var started = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+      function emit(status, resBody, error) {
+        if (!onExchange) return;
+        try {
+          onExchange({
+            method: method, path: path, url: url,
+            reqBody: body || null, status: status, resBody: resBody != null ? resBody : null,
+            error: error || null,
+            ms: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started)
+          });
+        } catch (e) {}
+      }
+
+      var run;
+      if (transport) {
+        run = Promise.resolve(transport(method, url, { headers: reqHeaders, body: body || null, path: path }));
+      } else {
+        run = withTimeout(function (signal) {
+          return fetch(url, {
+            method: method, headers: reqHeaders, credentials: 'omit', signal: signal,
+            body: body ? JSON.stringify(body) : undefined
+          }).then(function (r) {
+            return r.text().then(function (t) {
+              var json = null; try { json = t ? JSON.parse(t) : null; } catch (e) {}
+              return { status: r.status, json: json, text: t };
+            });
+          });
+        });
+      }
+
+      return run.then(function (res) {
+        var status = res.status != null ? res.status : 0;
+        var data = res.json != null ? res.json : res.data;
+        emit(status, data);
+        if (status < 200 || status >= 300) {
+          var err = new Error('Hairlist API ' + method + ' ' + path + ' failed (' + status + ')');
+          err.status = status; err.body = data;
+          throw err;
+        }
+        return data;
+      }, function (e) {
+        emit(0, null, e && e.message ? e.message : String(e));
+        throw e;
+      });
+    }
+
+    // Unwrap common list envelopes ({data:[...]} / {items:[...]} / [...]).
+    function list(data, keys) {
+      if (Array.isArray(data)) return data;
+      var v = pick(data, keys || ['data', 'items', 'results'], null);
+      return Array.isArray(v) ? v : [];
+    }
+
+    var m = opts.map || {};
+
+    // ---- Reads ------------------------------------------------------------
+    function getSalon() {
+      return request('GET', endpoints.salon).then(function (d) {
+        var s = (d && d.data) ? d.data : d || {};
+        return {
+          name: pick(s, m.name || ['name', 'title']),
+          tagline: pick(s, m.tagline || ['tagline', 'slogan', 'description']),
+          currency: pick(s, m.currency || ['currency'], 'CHF'),
+          phone: pick(s, m.phone || ['phone', 'telephone']),
+          email: pick(s, m.email || ['email']),
+          website: pick(s, m.website || ['website', 'url']),
+          address: pick(s, m.address || ['address'], null),
+          hours: pick(s, m.hours || ['hours', 'opening_hours', 'openingHours'], null),
+          raw: s
+        };
+      });
+    }
+
+    function getServices() {
+      return request('GET', endpoints.services).then(function (d) {
+        return list(d).map(function (s) {
+          return {
+            id: pick(s, m.serviceId || ['id', 'service_id', 'uuid']),
+            name: pick(s, m.serviceName || ['name', 'title']),
+            category: pick(s, m.category || ['category', 'group', 'category_name'], ''),
+            price: pick(s, m.price || ['price', 'amount', 'cost']),
+            currency: pick(s, m.currency || ['currency'], 'CHF'),
+            duration: pick(s, m.duration || ['duration', 'duration_minutes', 'minutes']),
+            priceFrom: !!pick(s, m.priceFrom || ['price_from', 'from'], false),
+            raw: s
+          };
+        });
+      });
+    }
+
+    function getStaff() {
+      return request('GET', endpoints.staff).then(function (d) {
+        return list(d).map(function (s) {
+          return {
+            id: pick(s, m.staffId || ['id', 'staff_id', 'calendar_id', 'uuid']),
+            name: pick(s, m.staffName || ['name', 'display_name', 'title']),
+            role: pick(s, m.role || ['role', 'position', 'job_title'], ''),
+            photo: pick(s, m.photo || ['photo', 'image', 'avatar'], null),
+            raw: s
+          };
+        });
+      });
+    }
+
+    // params: { serviceId, staffId, from (ISO date), to (ISO date) }
+    function getAvailability(params) {
+      params = params || {};
+      var q = {};
+      q[m.qService || 'service_id'] = params.serviceId;
+      q[m.qStaff || 'staff_id'] = params.staffId && params.staffId !== 'any' ? params.staffId : undefined;
+      q[m.qFrom || 'from'] = params.from;
+      q[m.qTo || 'to'] = params.to;
+      return request('GET', endpoints.availability, { query: q }).then(function (d) {
+        // Accept either grouped ({date, slots:[{time,available}]}) or flat ([{start,available}]).
+        var arr = list(d, ['data', 'availability', 'days', 'slots']);
+        return arr.map(function (row) {
+          if (row.slots || row.times) {
+            return {
+              date: pick(row, ['date', 'day']),
+              closed: !!pick(row, ['closed', 'is_closed'], false),
+              slots: (row.slots || row.times).map(function (t) {
+                return {
+                  time: pick(t, m.slotTime || ['time', 'start', 'from']),
+                  free: pick(t, m.slotFree || ['available', 'free', 'is_free'], true)
+                };
+              })
+            };
+          }
+          return {
+            start: pick(row, m.slotStart || ['start', 'datetime', 'time']),
+            free: pick(row, m.slotFree || ['available', 'free'], true)
+          };
+        });
+      });
+    }
+
+    // ---- Writes -----------------------------------------------------------
+    // booking: { serviceId, staffId, start (ISO datetime), customer:{name,email,phone,notes} }
+    function createBooking(booking) {
+      booking = booking || {};
+      var payload = {};
+      payload[m.bService || 'service_id'] = booking.serviceId;
+      payload[m.bStaff || 'staff_id'] = booking.staffId && booking.staffId !== 'any' ? booking.staffId : null;
+      payload[m.bStart || 'start'] = booking.start;
+      payload[m.bCustomer || 'customer'] = booking.customer || {};
+      if (booking.customerId) payload[m.bCustomerId || 'customer_id'] = booking.customerId;
+      if (booking.notes) payload[m.bNotes || 'notes'] = booking.notes;
+      return request('POST', endpoints.bookings, { body: payload }).then(function (d) {
+        var b = (d && d.data) ? d.data : d || {};
+        return {
+          id: pick(b, m.bookingId || ['id', 'booking_id', 'uuid']),
+          reference: pick(b, m.bookingRef || ['reference', 'ref', 'code', 'confirmation']),
+          status: pick(b, m.bookingStatus || ['status', 'state'], 'requested'),
+          raw: b
+        };
+      });
+    }
+
+    // customer: { name, email, phone, password }
+    function registerCustomer(customer) {
+      customer = customer || {};
+      var payload = {};
+      payload[m.cName || 'name'] = customer.name;
+      payload[m.cEmail || 'email'] = customer.email;
+      payload[m.cPhone || 'phone'] = customer.phone;
+      payload[m.cPassword || 'password'] = customer.password;
+      return request('POST', endpoints.customers, { body: payload }).then(function (d) {
+        var c = (d && d.data) ? d.data : d || {};
+        return {
+          id: pick(c, m.customerId || ['id', 'customer_id', 'uuid']),
+          name: pick(c, ['name', 'display_name'], customer.name),
+          email: pick(c, ['email'], customer.email),
+          token: pick(c, m.token || ['token', 'access_token', 'jwt'], null),
+          raw: c
+        };
+      });
+    }
+
+    // credentials: { email, password }
+    function loginCustomer(credentials) {
+      credentials = credentials || {};
+      var payload = {};
+      payload[m.cEmail || 'email'] = credentials.email;
+      payload[m.cPassword || 'password'] = credentials.password;
+      return request('POST', endpoints.login, { body: payload }).then(function (d) {
+        var c = (d && d.data) ? d.data : d || {};
+        var cust = c.customer || c;
+        return {
+          id: pick(cust, ['id', 'customer_id', 'uuid']),
+          name: pick(cust, ['name', 'display_name']),
+          email: pick(cust, ['email'], credentials.email),
+          phone: pick(cust, ['phone'], ''),
+          token: pick(c, m.token || ['token', 'access_token', 'jwt'], null),
+          raw: c
+        };
+      });
+    }
+
+    return {
+      config: { shop: shop, baseUrl: baseUrl, endpoints: endpoints, authScheme: authScheme, hasKey: !!apiKey },
+      getSalon: getSalon,
+      getServices: getServices,
+      getStaff: getStaff,
+      getAvailability: getAvailability,
+      createBooking: createBooking,
+      registerCustomer: registerCustomer,
+      loginCustomer: loginCustomer,
+      request: request
+    };
+  }
+
+  if (typeof Object.assign !== 'function') {
+    Object.assign = function (t) {
+      for (var i = 1; i < arguments.length; i++) { var s = arguments[i];
+        if (s) for (var k in s) if (Object.prototype.hasOwnProperty.call(s, k)) t[k] = s[k]; }
+      return t;
+    };
+  }
+
+  var HairlistApi = { create: create, DEFAULT_ENDPOINTS: DEFAULT_ENDPOINTS };
+  if (typeof module !== 'undefined' && module.exports) module.exports = HairlistApi;
+  global.HairlistApi = HairlistApi;
+
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
 (function(){
   "use strict";
-  var SALON = {
+  // Mock salon backend that stands in for the hairlist database in this preview.
+  var DB = {
     name:"Coiffeur Steiner", tagline:"Ihr Coiffeur im Herzen der Stadt — Damen, Herren & Kinder",
     currency:"CHF", address:{street:"Bahnhofstrasse 12", zip:"8001", city:"Zürich"},
     phone:"+41 44 211 22 33", email:"hallo@coiffeur-steiner.ch", website:"https://www.coiffeur-steiner.ch",
     hours:{Mo:null,Di:["09:00","18:30"],Mi:["09:00","18:30"],Do:["09:00","20:00"],Fr:["09:00","18:30"],Sa:["08:00","16:00"],So:null},
     services:[
-      {cat:"Damen",name:"Waschen, Schneiden, Föhnen",price:79,dur:60,from:true},
-      {cat:"Damen",name:"Coloration",price:95,dur:90,from:true},
-      {cat:"Damen",name:"Foilage / Strähnen",price:130,dur:120,from:true},
-      {cat:"Herren",name:"Waschen, Schneiden, Styling",price:55,dur:45},
-      {cat:"Herren",name:"Maschinenschnitt",price:39,dur:30},
-      {cat:"Herren",name:"Bartpflege & Konturen",price:25,dur:20},
-      {cat:"Kinder",name:"Kinderschnitt (bis 12 J.)",price:32,dur:30}
+      {id:"svc-damen-wsf",cat:"Damen",name:"Waschen, Schneiden, Föhnen",price:79,dur:60,from:true},
+      {id:"svc-damen-color",cat:"Damen",name:"Coloration",price:95,dur:90,from:true},
+      {id:"svc-damen-foilage",cat:"Damen",name:"Foilage / Strähnen",price:130,dur:120,from:true},
+      {id:"svc-herren-wss",cat:"Herren",name:"Waschen, Schneiden, Styling",price:55,dur:45},
+      {id:"svc-herren-masch",cat:"Herren",name:"Maschinenschnitt",price:39,dur:30},
+      {id:"svc-herren-bart",cat:"Herren",name:"Bartpflege & Konturen",price:25,dur:20},
+      {id:"svc-kinder",cat:"Kinder",name:"Kinderschnitt (bis 12 J.)",price:32,dur:30}
     ],
-    team:[{name:"Andrea Steiner",role:"Inhaberin · Master-Stylistin"},
-      {name:"Marco Bianchi",role:"Herren-Spezialist / Barbier"},
-      {name:"Lena Frei",role:"Coloristin"}]
+    team:[{id:"stf-andrea",name:"Andrea Steiner",role:"Inhaberin · Master-Stylistin"},
+      {id:"stf-marco",name:"Marco Bianchi",role:"Herren-Spezialist / Barbier"},
+      {id:"stf-lena",name:"Lena Frei",role:"Coloristin"}],
+    accounts:{}
   };
   var DOW = ["So","Mo","Di","Mi","Do","Fr","Sa"];
   var MON = ["Jan","Feb","März","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 
-  var state = { step:0, service:null, stylist:null, date:null, time:null,
+  var state = { step:0, serviceId:null, staffId:null, date:null, time:null, avail:null,
                 contact:{name:"",email:"",phone:"",notes:""},
                 createAccount:false, password:"", password2:"",
                 done:false, ref:null, accountResult:null };
-  var user = null;          // currently signed-in customer {name,email,phone}
-  var accounts = {};        // demo registry: email -> {name,phone,password}
+  var user = null;
+  var DATA = { services:[], staff:[], salon:null };
 
   var $ = function(id){ return document.getElementById(id); };
   var body = $("step-body"), sumLine = $("sum-line"), sumPrice = $("sum-price"),
       btnNext = $("next"), btnBack = $("back");
 
-  function fmtPrice(s){ return (s.from?"ab ":"") + SALON.currency + " " + s.price; }
   function esc(t){ return String(t==null?"":t).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
-  function initials(n){ return n.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join("").toUpperCase(); }
-  function hashInt(str){ var h=2166136261; for(var i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+  function initials(n){ return (n||"").split(/\s+/).map(function(w){return w[0];}).slice(0,2).join("").toUpperCase(); }
   function toMin(hm){ var p=hm.split(":"); return (+p[0])*60 + (+p[1]); }
   function pad(n){ return n<10?"0"+n:""+n; }
   function dateISO(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function hashInt(str){ var h=2166136261; for(var i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
   function validEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e||"").trim()); }
+  function fmtPrice(s){ return (s.priceFrom?"ab ":"") + (s.currency||"CHF") + " " + s.price; }
+  function svcById(id){ for(var i=0;i<DATA.services.length;i++) if(DATA.services[i].id===id) return DATA.services[i]; return null; }
+  function staffName(id){ if(id==="any") return "Nächste:r frei"; for(var i=0;i<DATA.staff.length;i++) if(DATA.staff[i].id===id) return DATA.staff[i].name; return id; }
 
   var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  // ---- API exchange log --------------------------------------------------
+  function pushLog(e){
+    var list=$("api-log-list"); if(!list) return;
+    var empty=list.querySelector(".apilog-empty"); if(empty) empty.parentNode.removeChild(empty);
+    var okCls = (e.status>=200 && e.status<300) ? "ok" : "err";
+    var row=document.createElement("div"); row.className="log-row";
+    var head=document.createElement("div"); head.className="log-head2";
+    head.innerHTML='<span class="log-method '+e.method+'">'+e.method+'</span>'+
+      '<span class="log-path">'+esc(e.path)+'</span>'+
+      '<span class="log-status '+okCls+'">'+(e.status||"ERR")+'</span>'+
+      '<span class="log-ms">'+e.ms+'ms</span>';
+    var det=document.createElement("div"); det.className="log-detail";
+    var reqTxt = e.reqBody? JSON.stringify(e.reqBody,null,2) : "—";
+    var resTxt = e.resBody!=null? JSON.stringify(e.resBody,null,2) : (e.error||"—");
+    det.innerHTML='<b>Request</b>\n'+esc(reqTxt)+'\n\n<b>Response</b>\n'+esc(resTxt);
+    head.onclick=function(){ row.classList.toggle("open"); };
+    row.appendChild(head); row.appendChild(det); list.appendChild(row);
+    list.scrollTop=list.scrollHeight;
+  }
+
+  // ---- In-page mock transport implementing the hairlist API contract -----
+  function reply(status,json){ return { status:status, json:json }; }
+  function mockTransport(method, url, opt){
+    var p = opt.path, bodyRaw = opt.body, u;
+    try{ u = new URL(url); }catch(err){ u = { searchParams:new URLSearchParams("") }; }
+    return new Promise(function(resolve){
+      setTimeout(function(){
+        if(method==="GET" && p==="/salon")
+          return resolve(reply(200,{data:{name:DB.name,tagline:DB.tagline,currency:DB.currency,phone:DB.phone,email:DB.email,website:DB.website,address:DB.address,opening_hours:DB.hours}}));
+        if(method==="GET" && p==="/services")
+          return resolve(reply(200,{data:DB.services.map(function(s){return {id:s.id,name:s.name,category:s.cat,price:s.price,duration:s.dur,price_from:!!s.from,currency:DB.currency};})}));
+        if(method==="GET" && p==="/staff")
+          return resolve(reply(200,{data:DB.team.map(function(t){return {id:t.id,name:t.name,role:t.role};})}));
+        if(method==="GET" && p==="/availability"){
+          var serviceId=u.searchParams.get("service_id"), staffId=u.searchParams.get("staff_id");
+          var from=u.searchParams.get("from"), to=u.searchParams.get("to")||from;
+          var svc=null; for(var i=0;i<DB.services.length;i++) if(DB.services[i].id===serviceId) svc=DB.services[i];
+          var dur = svc? svc.dur : 30, days=[], now=new Date();
+          var d=new Date(from+"T00:00:00"), end=new Date(to+"T00:00:00");
+          for(; d<=end; d.setDate(d.getDate()+1)){
+            var iso=dateISO(d), h=DB.hours[DOW[d.getDay()]];
+            if(!h){ days.push({date:iso,closed:true,slots:[]}); continue; }
+            var open=toMin(h[0]), close=toMin(h[1]), last=close-dur, slots=[];
+            for(var mn=open; mn<=last; mn+=30){
+              var hm=pad(Math.floor(mn/60))+":"+pad(mn%60);
+              var taken=(hashInt(iso+"|"+(staffId||"any")+"|"+hm)%10)<3;
+              var past=(iso===dateISO(now))&&(mn<=now.getHours()*60+now.getMinutes());
+              slots.push({time:hm, available: !taken && !past});
+            }
+            days.push({date:iso,closed:false,slots:slots});
+          }
+          return resolve(reply(200,{data:days}));
+        }
+        if(method==="POST" && p==="/bookings"){
+          var ref="ST-"+(new Date().getFullYear())+"-"+String(hashInt(JSON.stringify(bodyRaw)+Date.now())).slice(0,4);
+          return resolve(reply(201,{data:{id:"bk_"+Date.now(),reference:ref,status:"confirmed"}}));
+        }
+        if(method==="POST" && p==="/customers"){
+          var em=((bodyRaw&&bodyRaw.email)||"").toLowerCase();
+          DB.accounts[em]={name:bodyRaw.name,phone:bodyRaw.phone,password:bodyRaw.password};
+          return resolve(reply(201,{data:{id:"cus_"+Date.now(),name:bodyRaw.name,email:bodyRaw.email,token:"tok_"+Date.now()}}));
+        }
+        if(method==="POST" && p==="/customers/login"){
+          var e2=((bodyRaw&&bodyRaw.email)||"").toLowerCase(), acc=DB.accounts[e2];
+          if(acc && acc.password!==bodyRaw.password) return resolve(reply(401,{error:"Passwort ist nicht korrekt."}));
+          var nm=acc?acc.name:e2.split("@")[0].replace(/\b\w/g,function(x){return x.toUpperCase();});
+          return resolve(reply(200,{data:{token:"tok_login",customer:{id:"cus_login",name:nm,email:bodyRaw.email,phone:acc?acc.phone:""}}}));
+        }
+        resolve(reply(404,{error:"not found "+p}));
+      }, 170 + Math.floor(Math.random()*230));
+    });
+  }
+
+  var api = HairlistApi.create({ shop:"steiner", transport:mockTransport, onExchange:pushLog, lang:"de" });
 
   // ---- Steps -------------------------------------------------------------
   function renderService(){
     var cats=[], seen={};
-    SALON.services.forEach(function(s){ if(!seen[s.cat]){seen[s.cat]=[];cats.push(s.cat);} seen[s.cat].push(s); });
-    var html = '<h2 class="step-title">Leistung wählen</h2><p class="step-hint">Womit dürfen wir Sie verwöhnen?</p>';
+    DATA.services.forEach(function(s){ if(!seen[s.category]){seen[s.category]=[];cats.push(s.category);} seen[s.category].push(s); });
+    var html='<h2 class="step-title">Leistung wählen</h2><p class="step-hint">Womit dürfen wir Sie verwöhnen?</p>';
     cats.forEach(function(c){
-      html += '<div class="svc-cat">'+esc(c)+'</div>';
+      html+='<div class="svc-cat">'+esc(c)+'</div>';
       seen[c].forEach(function(s){
-        var idx = SALON.services.indexOf(s);
-        var on = state.service===idx;
-        html += '<button class="opt" type="button" aria-pressed="'+on+'" data-svc="'+idx+'">'+
-          '<div class="o-main"><div class="o-name">'+esc(s.name)+'</div>'+
-          '<div class="o-meta">'+s.dur+' Min.</div></div>'+
+        var on=state.serviceId===s.id;
+        html+='<button class="opt" type="button" aria-pressed="'+on+'" data-svc="'+esc(s.id)+'">'+
+          '<div class="o-main"><div class="o-name">'+esc(s.name)+'</div><div class="o-meta">'+s.duration+' Min.</div></div>'+
           '<div style="display:flex;align-items:center;gap:12px"><span class="o-price">'+fmtPrice(s)+'</span>'+
           '<span class="o-check">'+CHECK+'</span></div></button>';
       });
     });
-    body.innerHTML = html;
+    body.innerHTML=html;
     body.querySelectorAll("[data-svc]").forEach(function(b){
-      b.onclick=function(){ state.service=+b.dataset.svc; state.time=null; sync(); };
+      b.onclick=function(){ if(state.serviceId!==b.dataset.svc){ state.serviceId=b.dataset.svc; state.avail=null; state.date=null; state.time=null; } sync(); };
     });
   }
 
   function renderStylist(){
-    var html = '<h2 class="step-title">Mitarbeiter:in wählen</h2><p class="step-hint">Wer soll sich um Sie kümmern?</p>';
-    var opts = [{any:true,name:"Egal — nächste:r frei",role:"Frühestmöglicher Termin"}].concat(SALON.team);
-    opts.forEach(function(m,i){
-      var key = m.any? "any" : m.name;
-      var on = state.stylist===key;
-      var av = m.any? '<span class="avatar">★</span>' : '<span class="avatar">'+esc(initials(m.name))+'</span>';
-      html += '<button class="opt" type="button" aria-pressed="'+on+'" data-sty="'+esc(key)+'">'+
-        '<div class="opt-lead">'+av+'<div class="o-main"><div class="o-name">'+esc(m.name)+'</div>'+
-        '<div class="o-meta">'+esc(m.role)+'</div></div></div>'+
+    var html='<h2 class="step-title">Mitarbeiter:in wählen</h2><p class="step-hint">Wer soll sich um Sie kümmern?</p>';
+    var opts=[{id:"any",name:"Egal — nächste:r frei",role:"Frühestmöglicher Termin",any:true}].concat(DATA.staff);
+    opts.forEach(function(m){
+      var on=state.staffId===m.id;
+      var av=m.any?'<span class="avatar">★</span>':'<span class="avatar">'+esc(initials(m.name))+'</span>';
+      html+='<button class="opt" type="button" aria-pressed="'+on+'" data-sty="'+esc(m.id)+'">'+
+        '<div class="opt-lead">'+av+'<div class="o-main"><div class="o-name">'+esc(m.name)+'</div><div class="o-meta">'+esc(m.role)+'</div></div></div>'+
         '<span class="o-check">'+CHECK+'</span></button>';
     });
-    body.innerHTML = html;
+    body.innerHTML=html;
     body.querySelectorAll("[data-sty]").forEach(function(b){
-      b.onclick=function(){ state.stylist=b.dataset.sty; state.time=null; sync(); };
+      b.onclick=function(){ if(state.staffId!==b.dataset.sty){ state.staffId=b.dataset.sty; state.avail=null; state.date=null; state.time=null; } sync(); };
     });
   }
 
-  function buildDates(){
-    var out=[], now=new Date(); now.setHours(0,0,0,0);
-    for(var i=0;i<14;i++){ var d=new Date(now); d.setDate(now.getDate()+i); out.push(d); }
-    return out;
-  }
-  function slotsFor(d){
-    var h = SALON.hours[ DOW[d.getDay()] ];
-    if(!h) return null;
-    var svc = SALON.services[state.service], dur = svc? svc.dur : 30;
-    var open=toMin(h[0]), close=toMin(h[1]), last=close-dur, out=[];
-    var now=new Date();
-    for(var m=open; m<=last; m+=30){
-      var hm = pad(Math.floor(m/60))+":"+pad(m%60);
-      var stylistKey = state.stylist||"any";
-      var taken = (hashInt(dateISO(d)+"|"+stylistKey+"|"+hm) % 10) < 3; // ~30% taken
-      var past = (dateISO(d)===dateISO(now)) && (m <= now.getHours()*60+now.getMinutes());
-      out.push({ hm:hm, free: !taken && !past });
-    }
-    return out;
-  }
   function renderDate(){
-    var html = '<h2 class="step-title">Termin wählen</h2><p class="step-hint">Freie Zeitfenster richten sich nach den Öffnungszeiten'+
-      (state.stylist&&state.stylist!=="any"?' von '+esc(state.stylist):"")+'.</p>';
-    html += '<div class="dates" id="dates"></div><div id="slotwrap"></div>';
-    body.innerHTML = html;
-    var dwrap = $("dates");
-    if(!state.date) { // default: first day that actually has a free slot
-      var ds=buildDates();
-      for(var i=0;i<ds.length;i++){
-        var sl=slotsFor(ds[i]);
-        if(sl && sl.some(function(s){return s.free;})){ state.date=dateISO(ds[i]); break; }
-      }
-      if(!state.date){ for(var j=0;j<ds.length;j++){ if(SALON.hours[DOW[ds[j].getDay()]]){ state.date=dateISO(ds[j]); break; } } }
-    }
-    buildDates().forEach(function(d){
-      var iso=dateISO(d), closed=!SALON.hours[DOW[d.getDay()]];
+    body.innerHTML='<h2 class="step-title">Termin wählen</h2>'+
+      '<p class="step-hint">Freie Zeitfenster kommen live von der API'+
+      (state.staffId&&state.staffId!=="any"?' — '+esc(staffName(state.staffId)):"")+'.</p><div id="datewrap"></div>';
+    var key=state.serviceId+"|"+(state.staffId||"any");
+    if(state.avail && state.avail.key===key){ paintDates(); return; }
+    $("datewrap").innerHTML='<div class="loadwrap"><div class="spin"></div>Verfügbarkeit wird geladen …</div>';
+    var today=new Date(); var to=new Date(); to.setDate(today.getDate()+13);
+    api.getAvailability({serviceId:state.serviceId, staffId:state.staffId, from:dateISO(today), to:dateISO(to)})
+      .then(function(days){
+        state.avail={key:key, days:days};
+        if(!state.date || !dayFor(state.date)) pickDefaultDate();
+        if(state.step===2) paintDates();
+      })
+      .catch(function(){ if($("datewrap")) $("datewrap").innerHTML='<div class="closed-note">Verfügbarkeit konnte nicht geladen werden.</div>'; });
+  }
+  function dayFor(iso){ if(!state.avail) return null; for(var i=0;i<state.avail.days.length;i++) if(state.avail.days[i].date===iso) return state.avail.days[i]; return null; }
+  function pickDefaultDate(){
+    var days=state.avail.days;
+    for(var i=0;i<days.length;i++){ if(!days[i].closed && days[i].slots.some(function(s){return s.free;})){ state.date=days[i].date; return; } }
+    for(var j=0;j<days.length;j++){ if(!days[j].closed){ state.date=days[j].date; return; } }
+  }
+  function paintDates(){
+    var wrap=$("datewrap"); if(!wrap) return;
+    wrap.innerHTML='<div class="dates" id="dates"></div><div id="slotwrap"></div>';
+    var dwrap=$("dates");
+    state.avail.days.forEach(function(day){
+      var d=new Date(day.date+"T00:00:00"), closed=day.closed || day.slots.length===0 && day.closed;
       var b=document.createElement("button");
-      b.className="date"; b.type="button"; b.setAttribute("aria-pressed", state.date===iso);
-      if(closed) b.setAttribute("data-closed","1");
+      b.className="date"; b.type="button"; b.setAttribute("aria-pressed", state.date===day.date);
+      if(day.closed) b.setAttribute("data-closed","1");
       b.innerHTML='<div class="d-dow">'+DOW[d.getDay()]+'</div><div class="d-num">'+d.getDate()+'</div><div class="d-mon">'+MON[d.getMonth()]+'</div>';
-      if(!closed) b.onclick=function(){ state.date=iso; state.time=null; renderDate(); sync(); };
+      if(!day.closed) b.onclick=function(){ state.date=day.date; state.time=null; paintDates(); sync(); };
       dwrap.appendChild(b);
     });
-    var sw=$("slotwrap");
-    var dObj = state.date? new Date(state.date+"T00:00:00") : null;
-    var slots = dObj? slotsFor(dObj) : null;
-    if(!slots){ sw.innerHTML='<div class="closed-note">An diesem Tag geschlossen — bitte anderen Tag wählen.</div>'; return; }
+    var sw=$("slotwrap"), day=dayFor(state.date);
+    if(!day || day.closed){ sw.innerHTML='<div class="closed-note">An diesem Tag geschlossen — bitte anderen Tag wählen.</div>'; return; }
     var g=document.createElement("div"); g.className="slots";
-    slots.forEach(function(s){
-      var b=document.createElement("button"); b.className="slot"; b.type="button"; b.textContent=s.hm;
-      b.setAttribute("aria-pressed", state.time===s.hm);
-      if(!s.free){ b.disabled=true; } else { b.onclick=function(){ state.time=s.hm; renderDate(); sync(); }; }
+    day.slots.forEach(function(s){
+      var b=document.createElement("button"); b.className="slot"; b.type="button"; b.textContent=s.time;
+      b.setAttribute("aria-pressed", state.time===s.time);
+      if(!s.free){ b.disabled=true; } else { b.onclick=function(){ state.time=s.time; paintDates(); sync(); }; }
       g.appendChild(b);
     });
     sw.appendChild(g);
-    if(!slots.some(function(s){return s.free;})) sw.insertAdjacentHTML("beforeend",'<div class="closed-note">Keine freien Zeiten an diesem Tag.</div>');
+    if(!day.slots.some(function(s){return s.free;})) sw.insertAdjacentHTML("beforeend",'<div class="closed-note">Keine freien Zeiten an diesem Tag.</div>');
   }
 
   function renderContact(){
@@ -427,9 +851,7 @@
       ? '<div class="authbanner"><span class="tickmini">'+CHECK+'</span>'+
         '<span class="who">Angemeldet als <b>'+esc(user.name)+'</b><br><span style="color:var(--muted)">'+esc(user.email)+'</span></span>'+
         '<button type="button" id="c-signout">Abmelden</button></div>'
-      : '<p class="authnote" style="text-align:left;margin:0 0 14px">Schon Kundin oder Kunde? '+
-        '<a id="c-login" type="button">Anmelden</a></p>';
-
+      : '<p class="authnote" style="text-align:left;margin:0 0 14px">Schon Kundin oder Kunde? <a id="c-login" type="button">Anmelden</a></p>';
     var acctBlock = user ? '' :
       '<div class="acct-toggle">'+
         '<label class="check"><input type="checkbox" id="f-makeacct"'+(state.createAccount?" checked":"")+'>'+
@@ -442,29 +864,22 @@
           '</div>'+
         '</div>'+
       '</div>';
-
-    body.innerHTML =
+    body.innerHTML=
       '<h2 class="step-title">Ihre Kontaktdaten</h2><p class="step-hint">Damit wir Ihren Termin bestätigen können.</p>'+
       banner+
       '<div class="form-grid">'+
         '<div class="field full"><label for="f-name">Name <span class="req">*</span></label><input id="f-name" type="text" value="'+esc(c.name)+'" autocomplete="name"><div class="err" id="e-name" hidden>Bitte Namen angeben.</div></div>'+
         '<div class="field"><label for="f-phone">Telefon <span class="req">*</span></label><input id="f-phone" type="tel" value="'+esc(c.phone)+'" autocomplete="tel" inputmode="tel"></div>'+
-        '<div class="field"><label for="f-email">E-Mail'+(!user?' <span class="req" id="email-req" hidden>*</span>':'')+'</label><input id="f-email" type="email" value="'+esc(c.email)+'" autocomplete="email" inputmode="email"><div class="err" id="e-email" hidden></div></div>'+
+        '<div class="field"><label for="f-email">E-Mail'+(!user?' <span class="req" id="email-req" hidden>*</span>':'')+'</label><input id="f-email" type="email" value="'+esc(c.email)+'" autocomplete="email" inputmode="email"></div>'+
         '<div class="field full"><label for="f-notes">Anmerkungen</label><textarea id="f-notes" placeholder="z. B. Wunsch, Allergien …">'+esc(c.notes)+'</textarea></div>'+
         '<div class="err full" id="e-contact" hidden>Bitte Telefon oder E-Mail angeben.</div>'+
-      '</div>'+
-      acctBlock;
-
+      '</div>'+acctBlock;
     function bind(id,key){ var el=$(id); if(el) el.addEventListener("input",function(){ state.contact[key]=el.value; sync(false); }); }
     bind("f-name","name"); bind("f-phone","phone"); bind("f-email","email"); bind("f-notes","notes");
     if($("c-signout")) $("c-signout").onclick=function(){ signOut(); renderContact(); sync(false); };
     if($("c-login")) $("c-login").onclick=function(){ openAuth("login"); };
     if($("f-makeacct")){
-      $("f-makeacct").addEventListener("change",function(){
-        state.createAccount=this.checked; $("acct-fields").hidden=!this.checked;
-        if($("email-req")) $("email-req").hidden=!this.checked;
-        sync(false);
-      });
+      $("f-makeacct").addEventListener("change",function(){ state.createAccount=this.checked; $("acct-fields").hidden=!this.checked; if($("email-req")) $("email-req").hidden=!this.checked; sync(false); });
       if($("email-req")) $("email-req").hidden=!state.createAccount;
     }
     if($("f-pw")) $("f-pw").addEventListener("input",function(){ state.password=this.value; sync(false); });
@@ -472,20 +887,19 @@
   }
 
   function renderConfirm(){
-    var svc=SALON.services[state.service], d=new Date(state.date+"T00:00:00");
-    var when = DOW[d.getDay()]+", "+d.getDate()+". "+MON[d.getMonth()]+" "+d.getFullYear()+" · "+state.time;
-    var who = state.stylist==="any"?"Nächste:r frei":state.stylist;
-    document.getElementById("navbar").style.display="none";
-    body.parentNode.querySelector(".stepper").style.opacity=".5";
-    body.innerHTML =
+    var svc=svcById(state.serviceId), d=new Date(state.date+"T00:00:00");
+    var when=DOW[d.getDay()]+", "+d.getDate()+". "+MON[d.getMonth()]+" "+d.getFullYear()+" · "+state.time;
+    $("navbar").style.display="none";
+    document.querySelector(".stepper").style.opacity=".5";
+    body.innerHTML=
       '<div class="confirm"><div class="tick">'+CHECK+'</div>'+
-      '<h3>Termin angefragt!</h3>'+
+      '<h3>Termin bestätigt!</h3>'+
       '<div class="ref">Referenz '+esc(state.ref)+'</div>'+
       '<div class="recap">'+
         '<div><span class="k">Leistung</span><span class="v">'+esc(svc.name)+'</span></div>'+
-        '<div><span class="k">Mitarbeiter:in</span><span class="v">'+esc(who)+'</span></div>'+
+        '<div><span class="k">Mitarbeiter:in</span><span class="v">'+esc(staffName(state.staffId))+'</span></div>'+
         '<div><span class="k">Datum &amp; Zeit</span><span class="v">'+esc(when)+'</span></div>'+
-        '<div><span class="k">Dauer</span><span class="v">'+svc.dur+' Min.</span></div>'+
+        '<div><span class="k">Dauer</span><span class="v">'+svc.duration+' Min.</span></div>'+
         '<div><span class="k">Preis</span><span class="v">'+fmtPrice(svc)+'</span></div>'+
         '<div><span class="k">Auf den Namen</span><span class="v">'+esc(state.contact.name)+'</span></div>'+
         (state.accountResult?'<div><span class="k">Konto</span><span class="v">'+(state.accountResult==="created"?"Neu erstellt":"Angemeldet")+' · '+esc(state.contact.email)+'</span></div>':'')+
@@ -494,7 +908,7 @@
         '<button class="btn btn-primary" id="again" type="button">Neue Buchung</button>'+
         '<a class="btn btn-ghost" id="real" href="https://'+esc(($("shop").value||"steiner").trim())+'.hairlist.ch/termin" target="_blank" rel="noopener">Echte Buchung bei hairlist ↗</a>'+
       '</div>'+
-      '<p class="demo-note">Demo-Buchung — es wurde kein echter Termin erstellt. Im Live-Betrieb legt das Widget den Termin über die hairlist-API des Salons an.</p>'+
+      '<p class="demo-note">Demo — die Buchung wurde über die (gemockte) hairlist-API angelegt; es entsteht kein echter Termin. Auf Ihrer Website mit API-Key geht derselbe POST an die echte hairlist-API.</p>'+
       '</div>';
     $("again").onclick=reset;
   }
@@ -502,8 +916,8 @@
   // ---- Flow control ------------------------------------------------------
   var steps=[renderService,renderStylist,renderDate,renderContact];
   function stepValid(){
-    if(state.step===0) return state.service!=null;
-    if(state.step===1) return state.stylist!=null;
+    if(state.step===0) return state.serviceId!=null;
+    if(state.step===1) return state.staffId!=null;
     if(state.step===2) return state.date!=null && state.time!=null;
     if(state.step===3){
       var c=state.contact;
@@ -520,41 +934,28 @@
   }
   function updateStepper(){
     document.querySelectorAll("#stepper li").forEach(function(li){
-      var s=+li.dataset.step;
-      li.setAttribute("data-state", s<state.step?"done":(s===state.step?"current":""));
+      var s=+li.dataset.step; li.setAttribute("data-state", s<state.step?"done":(s===state.step?"current":""));
     });
   }
   function summary(){
     var parts=[];
-    if(state.service!=null) parts.push(SALON.services[state.service].name);
-    if(state.stylist) parts.push(state.stylist==="any"?"Nächste:r frei":state.stylist);
+    var svc=svcById(state.serviceId); if(svc) parts.push(svc.name);
+    if(state.staffId) parts.push(staffName(state.staffId));
     if(state.date&&state.time){ var d=new Date(state.date+"T00:00:00"); parts.push(DOW[d.getDay()]+" "+d.getDate()+"."+(d.getMonth()+1)+" "+state.time); }
     sumLine.textContent = parts.length?parts.join(" · "):"Bitte Leistung wählen";
-    sumPrice.textContent = state.service!=null? fmtPrice(SALON.services[state.service]) : "";
+    sumPrice.textContent = svc? fmtPrice(svc) : "";
   }
-  function sync(rerender){
-    if(rerender!==false){ /* only re-render on explicit step nav */ }
-    updateStepper(); summary();
-    btnNext.disabled = !stepValid();
-    btnNext.textContent = state.step===3? "Termin bestätigen" : "Weiter";
-    btnBack.hidden = state.step===0;
-  }
-  function goto(n){
-    state.step=n; steps[n]();
-    updateStepper(); summary();
-    btnNext.disabled=!stepValid();
-    btnNext.textContent = n===3?"Termin bestätigen":"Weiter";
-    btnBack.hidden = n===0;
-    body.scrollIntoView({block:"nearest"});
-  }
+  function sync(){ updateStepper(); summary(); btnNext.disabled=!stepValid(); btnNext.textContent=state.step===3?"Termin bestätigen":"Weiter"; btnBack.hidden=state.step===0; }
+  function goto(n){ state.step=n; steps[n](); sync(); body.scrollIntoView({block:"nearest"}); }
+  btnBack.onclick=function(){ if(state.step>0) goto(state.step-1); };
+
   btnNext.onclick=function(){
     if(!stepValid()){
       if(state.step===3){ var c=state.contact;
         if($("e-name")) $("e-name").hidden=!!c.name.trim();
         if($("e-contact")) $("e-contact").hidden=!!(c.phone.trim()||c.email.trim());
         if(state.createAccount && !user && $("e-pw")){
-          var m="";
-          if(!validEmail(c.email)) m="Für ein Konto wird eine gültige E-Mail benötigt.";
+          var m=""; if(!validEmail(c.email)) m="Für ein Konto wird eine gültige E-Mail benötigt.";
           else if((state.password||"").length<8) m="Passwort muss mindestens 8 Zeichen haben.";
           else if(state.password!==state.password2) m="Die Passwörter stimmen nicht überein.";
           $("e-pw").textContent=m; $("e-pw").hidden=!m;
@@ -563,41 +964,41 @@
       return;
     }
     if(state.step<3){ goto(state.step+1); return; }
-    // Final step: create account if requested, then confirm.
+    // Final step: (optionally register), then create the booking via the API.
+    btnNext.disabled=true; btnNext.textContent="Wird gebucht …"; btnBack.disabled=true;
+    var chain = Promise.resolve();
     if(!user && state.createAccount){
-      accounts[state.contact.email.toLowerCase()]={name:state.contact.name,phone:state.contact.phone,password:state.password};
-      signIn({name:state.contact.name,email:state.contact.email,phone:state.contact.phone});
-      state.accountResult="created";
+      chain = api.registerCustomer({name:state.contact.name,email:state.contact.email,phone:state.contact.phone,password:state.password})
+        .then(function(cust){ signIn({id:cust.id,name:cust.name||state.contact.name,email:cust.email||state.contact.email,phone:state.contact.phone}); state.accountResult="created"; });
     } else if(user){ state.accountResult="signedin"; }
-    else { state.accountResult=null; }
-    state.ref="ST-"+(new Date().getFullYear())+"-"+String(hashInt(JSON.stringify(state)).toString()).slice(0,4);
-    state.done=true; renderConfirm();
+    chain.then(function(){
+      return api.createBooking({
+        serviceId:state.serviceId, staffId:state.staffId, start:state.date+"T"+state.time+":00",
+        customerId: user&&user.id, customer:{name:state.contact.name,email:state.contact.email,phone:state.contact.phone,notes:state.contact.notes}
+      });
+    }).then(function(res){
+      state.ref=res.reference||res.id; state.done=true; btnBack.disabled=false; renderConfirm();
+    }).catch(function(err){
+      btnNext.disabled=false; btnBack.disabled=false; btnNext.textContent="Termin bestätigen";
+      alert("Die Buchung ist fehlgeschlagen: "+(err&&err.message?err.message:err));
+    });
   };
-  btnBack.onclick=function(){ if(state.step>0) goto(state.step-1); };
 
   function reset(){
-    state={ step:0, service:null, stylist:null, date:null, time:null,
-            contact:{name:"",email:"",phone:"",notes:""},
-            createAccount:false, password:"", password2:"", done:false, ref:null, accountResult:null };
+    state={ step:0, serviceId:null, staffId:null, date:null, time:null, avail:null,
+            contact:{name:"",email:"",phone:"",notes:""}, createAccount:false, password:"", password2:"",
+            done:false, ref:null, accountResult:null };
     if(user){ state.contact.name=user.name; state.contact.phone=user.phone||""; state.contact.email=user.email; }
-    document.getElementById("navbar").style.display="";
+    $("navbar").style.display=""; btnNext.disabled=false; btnBack.disabled=false;
     document.querySelector(".stepper").style.opacity="";
     goto(0);
   }
 
-  // ---- Account: registration / login ------------------------------------
+  // ---- Account: registration / login (via API) ---------------------------
   var authOverlay=$("auth-overlay");
   function openAuth(view){ renderAuth(view); authOverlay.hidden=false; document.body.style.overflow="hidden"; }
   function closeAuth(){ authOverlay.hidden=true; document.body.style.overflow=""; }
-
-  function signIn(u){
-    user=u;
-    state.contact.name=u.name;
-    if(u.phone) state.contact.phone=u.phone;
-    state.contact.email=u.email;
-    state.createAccount=false; state.password=""; state.password2="";
-    updateAccountUI();
-  }
+  function signIn(u){ user=u; state.contact.name=u.name; if(u.phone) state.contact.phone=u.phone; state.contact.email=u.email; state.createAccount=false; state.password=""; state.password2=""; updateAccountUI(); }
   function signOut(){ user=null; updateAccountUI(); }
   function firstName(n){ return (n||"").split(/\s+/)[0]; }
   function updateAccountUI(){
@@ -605,19 +1006,18 @@
     $("account-label").textContent = user? firstName(user.name) : "Konto";
     $("account-icon").textContent = user? "✓" : "👤";
     btn.classList.toggle("is-auth", !!user);
-    btn.setAttribute("aria-label", user? "Angemeldet als "+user.name : "Konto / Registrieren");
   }
+  function busy(btn,on,label){ btn.disabled=on; if(on){ btn.dataset.o=btn.textContent; btn.textContent=label; } else if(btn.dataset.o){ btn.textContent=btn.dataset.o; } }
 
   function renderAuth(view){
     var b=$("auth-body");
     if(user && view==="account"){
       $("auth-title").textContent="Ihr Konto";
-      b.innerHTML =
-        '<div class="authbanner" style="margin-bottom:16px"><span class="tickmini">'+CHECK+'</span>'+
+      b.innerHTML='<div class="authbanner" style="margin-bottom:16px"><span class="tickmini">'+CHECK+'</span>'+
         '<span class="who">Angemeldet als <b>'+esc(user.name)+'</b><br><span style="color:var(--muted)">'+esc(user.email)+'</span></span></div>'+
         '<p class="step-hint" style="margin:0 0 14px">Hier verwalten Kundinnen und Kunden ihre Termine und Daten.</p>'+
         '<button class="btn btn-ghost" id="a-signout" type="button" style="width:100%;justify-content:center">Abmelden</button>';
-      $("a-signout").onclick=function(){ signOut(); closeAuth(); if(state.step===3){ renderContact(); sync(false); } };
+      $("a-signout").onclick=function(){ signOut(); closeAuth(); if(state.step===3){ renderContact(); sync(); } };
       return;
     }
     view = view==="login"?"login":"register";
@@ -627,29 +1027,24 @@
       '<button class="authtab" type="button" data-tab="login" aria-selected="'+(view==="login")+'">Anmelden</button></div>';
     var form;
     if(view==="register"){
-      form =
-        '<div class="form-grid">'+
-          '<div class="field full"><label for="r-name">Name <span class="req">*</span></label><input id="r-name" type="text" value="'+esc(state.contact.name)+'" autocomplete="name"></div>'+
-          '<div class="field"><label for="r-email">E-Mail <span class="req">*</span></label><input id="r-email" type="email" value="'+esc(state.contact.email)+'" autocomplete="email" inputmode="email"></div>'+
-          '<div class="field"><label for="r-phone">Telefon</label><input id="r-phone" type="tel" value="'+esc(state.contact.phone)+'" autocomplete="tel" inputmode="tel"></div>'+
-          '<div class="field"><label for="r-pw">Passwort <span class="req">*</span></label><input id="r-pw" type="password" autocomplete="new-password" placeholder="mind. 8 Zeichen"></div>'+
-          '<div class="field"><label for="r-pw2">Bestätigen <span class="req">*</span></label><input id="r-pw2" type="password" autocomplete="new-password"></div>'+
-          '<label class="check full" style="grid-column:1/-1"><input type="checkbox" id="r-agb"><span>Ich akzeptiere die <a href="#" onclick="return false">AGB</a> und Datenschutzbestimmungen.</span></label>'+
-          '<div class="err full" id="r-err" hidden></div>'+
-        '</div>'+
+      form='<div class="form-grid">'+
+        '<div class="field full"><label for="r-name">Name <span class="req">*</span></label><input id="r-name" type="text" value="'+esc(state.contact.name)+'" autocomplete="name"></div>'+
+        '<div class="field"><label for="r-email">E-Mail <span class="req">*</span></label><input id="r-email" type="email" value="'+esc(state.contact.email)+'" autocomplete="email" inputmode="email"></div>'+
+        '<div class="field"><label for="r-phone">Telefon</label><input id="r-phone" type="tel" value="'+esc(state.contact.phone)+'" autocomplete="tel" inputmode="tel"></div>'+
+        '<div class="field"><label for="r-pw">Passwort <span class="req">*</span></label><input id="r-pw" type="password" autocomplete="new-password" placeholder="mind. 8 Zeichen"></div>'+
+        '<div class="field"><label for="r-pw2">Bestätigen <span class="req">*</span></label><input id="r-pw2" type="password" autocomplete="new-password"></div>'+
+        '<label class="check full" style="grid-column:1/-1"><input type="checkbox" id="r-agb"><span>Ich akzeptiere die <a href="#" onclick="return false">AGB</a> und Datenschutzbestimmungen.</span></label>'+
+        '<div class="err full" id="r-err" hidden></div></div>'+
         '<button class="btn btn-primary" id="r-submit" type="button" style="width:100%;justify-content:center;margin-top:16px">Konto erstellen</button>';
     } else {
-      form =
-        '<div class="form-grid">'+
-          '<div class="field full"><label for="l-email">E-Mail <span class="req">*</span></label><input id="l-email" type="email" value="'+esc(state.contact.email)+'" autocomplete="email" inputmode="email"></div>'+
-          '<div class="field full"><label for="l-pw">Passwort <span class="req">*</span></label><input id="l-pw" type="password" autocomplete="current-password"></div>'+
-          '<div class="err full" id="l-err" hidden></div>'+
-        '</div>'+
+      form='<div class="form-grid">'+
+        '<div class="field full"><label for="l-email">E-Mail <span class="req">*</span></label><input id="l-email" type="email" value="'+esc(state.contact.email)+'" autocomplete="email" inputmode="email"></div>'+
+        '<div class="field full"><label for="l-pw">Passwort <span class="req">*</span></label><input id="l-pw" type="password" autocomplete="current-password"></div>'+
+        '<div class="err full" id="l-err" hidden></div></div>'+
         '<button class="btn btn-primary" id="l-submit" type="button" style="width:100%;justify-content:center;margin-top:16px">Anmelden</button>';
     }
-    b.innerHTML = tabs+form;
+    b.innerHTML=tabs+form;
     b.querySelectorAll(".authtab").forEach(function(t){ t.onclick=function(){ renderAuth(t.dataset.tab); }; });
-
     if(view==="register"){
       $("r-submit").onclick=function(){
         var name=$("r-name").value.trim(), email=$("r-email").value.trim(), phone=$("r-phone").value.trim(),
@@ -661,27 +1056,26 @@
         else if(pw!==pw2) msg="Die Passwörter stimmen nicht überein.";
         else if(!agb) msg="Bitte AGB akzeptieren.";
         if(msg){ err.textContent=msg; err.hidden=false; return; }
-        accounts[email.toLowerCase()]={name:name,phone:phone,password:pw};
-        signIn({name:name,email:email,phone:phone});
-        closeAuth();
-        if(state.step===3){ renderContact(); sync(false); }
+        err.hidden=true; busy($("r-submit"),true,"Wird erstellt …");
+        api.registerCustomer({name:name,email:email,phone:phone,password:pw}).then(function(cust){
+          signIn({id:cust.id,name:cust.name||name,email:cust.email||email,phone:phone});
+          closeAuth(); if(state.step===3){ renderContact(); sync(); }
+        }).catch(function(e){ busy($("r-submit"),false); err.textContent="Registrierung fehlgeschlagen."; err.hidden=false; });
       };
     } else {
       $("l-submit").onclick=function(){
         var email=$("l-email").value.trim(), pw=$("l-pw").value, err=$("l-err");
         if(!validEmail(email)){ err.textContent="Bitte gültige E-Mail angeben."; err.hidden=false; return; }
         if(!pw){ err.textContent="Bitte Passwort eingeben."; err.hidden=false; return; }
-        var acc=accounts[email.toLowerCase()];
-        if(acc && acc.password!==pw){ err.textContent="Passwort ist nicht korrekt."; err.hidden=false; return; }
-        var u = acc? {name:acc.name,email:email,phone:acc.phone}
-                   : {name:email.split("@")[0].replace(/\b\w/g,function(m){return m.toUpperCase();}), email:email, phone:""};
-        signIn(u);
-        closeAuth();
-        if(state.step===3){ renderContact(); sync(false); }
+        err.hidden=true; busy($("l-submit"),true,"Anmeldung …");
+        api.loginCustomer({email:email,password:pw}).then(function(cust){
+          signIn({id:cust.id,name:cust.name,email:cust.email||email,phone:cust.phone||""});
+          closeAuth(); if(state.step===3){ renderContact(); sync(); }
+        }).catch(function(e){ busy($("l-submit"),false); err.textContent=(e&&e.status===401)?"E-Mail oder Passwort ist nicht korrekt.":"Anmeldung fehlgeschlagen."; err.hidden=false; });
       };
     }
   }
-  $("open-account").onclick=function(){ openAuth(user? "account":"register"); };
+  $("open-account").onclick=function(){ openAuth(user?"account":"register"); };
   $("close-auth").onclick=closeAuth;
   authOverlay.onclick=function(e){ if(e.target===authOverlay) closeAuth(); };
   document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&!authOverlay.hidden) closeAuth(); });
@@ -689,18 +1083,18 @@
 
   // ---- Info overlay ------------------------------------------------------
   function buildInfo(){
+    var s=DATA.salon||{}, addr=s.address||DB.address;
+    var hours=s.hours||DB.hours;
     var h='<h4>Kontakt</h4><div class="chips">'+
-      '<a class="chip" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(SALON.name+", "+SALON.address.street+" "+SALON.address.zip+" "+SALON.address.city)+'">📍 '+esc(SALON.address.street+", "+SALON.address.zip+" "+SALON.address.city)+'</a>'+
-      '<a class="chip" href="tel:'+esc(SALON.phone.replace(/\s/g,""))+'">📞 '+esc(SALON.phone)+'</a>'+
-      '<a class="chip" href="mailto:'+esc(SALON.email)+'">✉️ '+esc(SALON.email)+'</a></div>';
+      '<a class="chip" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(DB.name+", "+addr.street+" "+addr.zip+" "+addr.city)+'">📍 '+esc(addr.street+", "+addr.zip+" "+addr.city)+'</a>'+
+      '<a class="chip" href="tel:'+esc((s.phone||DB.phone).replace(/\s/g,""))+'">📞 '+esc(s.phone||DB.phone)+'</a>'+
+      '<a class="chip" href="mailto:'+esc(s.email||DB.email)+'">✉️ '+esc(s.email||DB.email)+'</a></div>';
     h+='<h4>Öffnungszeiten</h4>';
-    ["Mo","Di","Mi","Do","Fr","Sa","So"].forEach(function(day){
-      var v=SALON.hours[day]; h+='<div class="kv"><span class="k">'+day+'</span><span class="v">'+(v?v[0]+"–"+v[1]:"Geschlossen")+'</span></div>';
-    });
+    ["Mo","Di","Mi","Do","Fr","Sa","So"].forEach(function(day){ var v=hours[day]; h+='<div class="kv"><span class="k">'+day+'</span><span class="v">'+(v?v[0]+"–"+v[1]:"Geschlossen")+'</span></div>'; });
     h+='<h4>Leistungen</h4>';
-    SALON.services.forEach(function(s){ h+='<div class="kv"><span class="k">'+esc(s.name)+'</span><span class="v">'+fmtPrice(s)+'</span></div>'; });
+    (DATA.services.length?DATA.services:[]).forEach(function(s2){ h+='<div class="kv"><span class="k">'+esc(s2.name)+'</span><span class="v">'+fmtPrice(s2)+'</span></div>'; });
     h+='<h4>Team</h4>';
-    SALON.team.forEach(function(m){ h+='<div class="kv"><span class="k">'+esc(m.name)+'</span><span class="v" style="font-weight:400;color:var(--muted)">'+esc(m.role)+'</span></div>'; });
+    (DATA.staff.length?DATA.staff:[]).forEach(function(m){ h+='<div class="kv"><span class="k">'+esc(m.name)+'</span><span class="v" style="font-weight:400;color:var(--muted)">'+esc(m.role)+'</span></div>'; });
     $("info-body").innerHTML=h;
   }
   var overlay=$("info-overlay");
@@ -710,11 +1104,22 @@
   overlay.onclick=function(e){ if(e.target===overlay) closeInfo(); };
   document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&!overlay.hidden) closeInfo(); });
 
-  // ---- Config ------------------------------------------------------------
+  // ---- Config + init -----------------------------------------------------
   function applyColor(){ document.documentElement.style.setProperty("--brass", $("color").value); }
   $("color").addEventListener("input",applyColor);
-  $("shop").addEventListener("input",function(){ var v=($("shop").value||"steiner").trim(); $("preview-url").textContent=v+".hairlist.ch/termin"; });
+  $("shop").addEventListener("input",function(){ var v=($("shop").value||"steiner").trim(); $("preview-url").textContent=v+".hairlist.ch/termin"; $("api-base").textContent="https://"+v+".hairlist.ch/api"; });
+  $("log-clear").onclick=function(){ $("api-log-list").innerHTML='<div class="apilog-empty">Noch keine Aufrufe.</div>'; };
 
-  applyColor(); goto(0);
+  function loadSalon(){
+    body.innerHTML='<div class="loadwrap"><div class="spin"></div>Salondaten werden über die API geladen …</div>';
+    $("api-base").textContent=api.config.baseUrl;
+    Promise.all([api.getSalon(), api.getServices(), api.getStaff()]).then(function(r){
+      DATA.salon=r[0]; DATA.services=r[1]; DATA.staff=r[2];
+      $("salon-name").textContent=DATA.salon.name||DB.name;
+      goto(0);
+    }).catch(function(e){ body.innerHTML='<div class="closed-note">Salondaten konnten nicht geladen werden.</div>'; });
+  }
+
+  applyColor(); loadSalon();
 })();
 </script>
