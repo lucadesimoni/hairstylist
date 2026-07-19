@@ -250,7 +250,9 @@ hairlist API documentation and adjust `endpoints` / `map` accordingly.
 | File                     | Purpose |
 | ------------------------ | ------- |
 | `hairlist-widget.js`     | The widget (drop-in, self-contained) — iframe embed **and** native API mode. |
+| `hairlist-widget.min.js` | Minified widget for production (~55 KB). |
 | `hairlist-api.js`        | Standalone client for exchanging data with the hairlist API. |
+| `hairlist-api.min.js`    | Minified API client for production (~6 KB). |
 | `demo/index.html`        | Interactive demo — enter a shop key and preview. |
 | `demo/native.html`       | Native API mode of the widget (booking + registration), self-contained. |
 | `demo/booking-demo.html` | Self-contained working booking + registration flow, driven through `hairlist-api.js` with a live API-call log. |
@@ -259,11 +261,20 @@ hairlist API documentation and adjust `endpoints` / `map` accordingly.
 
 ## Development / preview
 
-No build required. Serve the folder and open the demo:
+No build required to use the sources. Serve the folder and open the demo:
 
 ```bash
 python3 -m http.server 8000
 # then open http://localhost:8000/demo/
+```
+
+For production, use the minified builds (`hairlist-widget.min.js` /
+`hairlist-api.min.js`) — the widget auto-loads the `.min` API client when it is
+itself minified. Regenerate them with:
+
+```bash
+npx terser hairlist-api.js    -c -m --comments false -o hairlist-api.min.js
+npx terser hairlist-widget.js -c -m --comments false -o hairlist-widget.min.js
 ```
 
 ## License

@@ -753,7 +753,8 @@
     if (!_apiLoad) {
       _apiLoad = new Promise(function (res, rej) {
         var s = document.createElement('script');
-        s.src = cfg.apiSrc || (scriptDir() + 'hairlist-api.js');
+        var apiFile = /\.min\.js(\?|$)/.test(WIDGET_SRC) ? 'hairlist-api.min.js' : 'hairlist-api.js';
+        s.src = cfg.apiSrc || (scriptDir() + apiFile);
         s.onload = function () { res(); };
         s.onerror = function () { rej(new Error('hairlist-api.js could not be loaded')); };
         document.head.appendChild(s);
