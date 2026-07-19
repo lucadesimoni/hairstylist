@@ -101,7 +101,7 @@ key in `HairlistWidget.init({...})`.
 | `keyParam`       | `data-key-param`     | `key`            | Query-parameter name used for `key`. |
 | `url`            | `data-url`           | —                | Explicit full booking URL (overrides `shop`). |
 | `path`           | `data-path`          | `/termin`        | Booking path appended to the shop host. |
-| `mode`           | `data-mode`          | `modal`          | `modal` (floating button + dialog), `inline` (embed in a container), or `button` (your own button target). |
+| `mode`           | `data-mode`          | `modal`          | `modal` (floating button + dialog), `inline` (embed in a container), `button` (your own button target), or `native` / `native-inline` (API-driven flow, see below). |
 | `mount`          | `data-mount`         | —                | CSS selector for the container (`inline`) or button host (`button`). |
 | `lang`           | `data-lang`          | `de`             | UI language: `de`, `fr`, `it`, `en`. Also passed to the booking page as `?lang=`. |
 | `color`          | `data-color`         | `#111827`        | Accent color for buttons and highlights. |
@@ -163,6 +163,41 @@ An “open in new tab” affordance is present at all times regardless.
 
 ---
 
+## Native mode — booking & registration inside the widget
+
+By default the widget embeds hairlist's own booking page in an iframe. With a
+salon **API key** it can instead render a fully native booking flow (service →
+stylist → date & time → details → confirmation) plus customer **registration and
+login**, all driven by `hairlist-api.js` — no iframe.
+
+```html
+<div id="booking"></div>
+<script src="hairlist-api.js"></script>
+<script src="hairlist-widget.js"
+        data-shop="steiner"
+        data-mode="native-inline"
+        data-mount="#booking"
+        data-api-key="YOUR_SALON_API_KEY"></script>
+```
+
+- `mode="native"` — floating button + modal, native flow.
+- `mode="native-inline"` — native flow embedded in `data-mount`.
+- Native mode auto-activates whenever `data-api-key` is set (any mode).
+
+The widget loads `hairlist-api.js` automatically from the same directory as
+`hairlist-widget.js` (override with `data-api-src`). Additional native options:
+
+| Option           | `data-*`             | Default   | Description |
+| ---------------- | -------------------- | --------- | ----------- |
+| `apiKey`         | `data-api-key`       | —         | Salon API key. Enables native mode. |
+| `apiBase`        | `data-api-base`      | `https://<shop>.hairlist.ch/api` | API base URL. |
+| `apiAuthScheme`  | `data-api-auth-scheme` | `bearer` | `bearer`, `header`, or `query`. |
+| `apiSrc`         | `data-api-src`       | same dir  | URL to `hairlist-api.js`. |
+| `native`         | `data-native`        | auto      | Force native on/off. |
+| `apiEndpoints` / `apiMap` / `apiTransport` / `onExchange` | — (JS only) | — | Passed through to `HairlistApi.create` (see below). |
+
+See [`demo/native.html`](demo/native.html) for a self-contained working example.
+
 ## Exchanging data with the hairlist API
 
 `hairlist-api.js` is a standalone, dependency-free client for exchanging data
@@ -214,9 +249,10 @@ hairlist API documentation and adjust `endpoints` / `map` accordingly.
 
 | File                     | Purpose |
 | ------------------------ | ------- |
-| `hairlist-widget.js`     | The widget (drop-in, self-contained). |
+| `hairlist-widget.js`     | The widget (drop-in, self-contained) — iframe embed **and** native API mode. |
 | `hairlist-api.js`        | Standalone client for exchanging data with the hairlist API. |
 | `demo/index.html`        | Interactive demo — enter a shop key and preview. |
+| `demo/native.html`       | Native API mode of the widget (booking + registration), self-contained. |
 | `demo/booking-demo.html` | Self-contained working booking + registration flow, driven through `hairlist-api.js` with a live API-call log. |
 | `demo/steiner.json`      | Filled-in **sample** info file used by the demo (Coiffeur Steiner). |
 | `salon.example.json`     | Blank template for the optional info panel. |

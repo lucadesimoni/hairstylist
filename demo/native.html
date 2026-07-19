@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hairlist Widget — Native API mode</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+           background: #f6f7f9; color: #1f2430; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 100px; }
+    h1 { font-size: 26px; margin: 0 0 6px; }
+    p.lede { color: #6b7280; margin: 0 0 24px; }
+    #booking { }
+    pre { background: #0f1420; color: #e6e9ef; padding: 16px; border-radius: 12px; overflow-x: auto;
+          font-size: 13px; line-height: 1.5; }
+    code { background: #eef1f5; padding: 1px 5px; border-radius: 5px; }
+    @media (prefers-color-scheme: dark){ body{ background:#0f131a; color:#e6e9ef } code{ background:#232936 } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>💇 Native API booking</h1>
+    <p class="lede">The widget in <code>mode="native-inline"</code> — booking, availability and
+      registration run through <code>hairlist-api.js</code>. On a real site you pass
+      <code>data-api-key</code>; this page injects a small mock transport so it runs offline.</p>
+
+    <div id="booking"></div>
+
+    <h3 style="margin-top:36px">Embed code (real site)</h3>
+    <pre>&lt;div id="booking"&gt;&lt;/div&gt;
+&lt;script src="hairlist-api.js"&gt;&lt;/script&gt;
+&lt;script src="hairlist-widget.js"
+  data-shop="steiner"
+  data-mode="native-inline"
+  data-mount="#booking"
+  data-api-key="YOUR_SALON_API_KEY"
+  data-color="#b8860b"&gt;&lt;/script&gt;</pre>
+  </div>
+
+  <!-- Load the API client and the widget. data-auto="false" so we init manually with a mock transport. -->
+  <script src="../hairlist-api.js"></script>
+  <script src="../hairlist-widget.js" data-auto="false"></script>
+  <script>
+    // --- Demo-only mock transport that mimics a salon's hairlist API ---
+    var HOURS = { Mo:null, Di:['09:00','18:30'], Mi:['09:00','18:30'], Do:['09:00','20:00'],
+                  Fr:['09:00','18:30'], Sa:['08:00','16:00'], So:null };
+    var SERVICES = [
+      { id:'s1', name:'Waschen, Schneiden, Föhnen', category:'Damen', price:79, duration:60, price_from:true, currency:'CHF' },
+      { id:'s2', name:'Coloration', category:'Damen', price:95, duration:90, price_from:true, currency:'CHF' },
+      { id:'s3', name:'Herren: Waschen, Schneiden, Styling', category:'Herren', price:55, duration:45, currency:'CHF' },
+      { id:'s4', name:'Bartpflege & Konturen', category:'Herren', price:25, duration:20, currency:'CHF' }
+    ];
+    var STAFF = [ { id:'a1', name:'Andrea Steiner', role:'Inhaberin · Master-Stylistin' },
+                  { id:'a2', name:'Marco Bianchi', role:'Barbier' },
+                  { id:'a3', name:'Lena Frei', role:'Coloristin' } ];
+    var DOW = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+    function pad(n){ return n<10?'0'+n:''+n; }
+    function iso(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+    function hash(s){ var h=2166136261; for(var i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+    var accounts = {};
+
+    function transport(method, url, opt) {
+      var p = opt.path, b = opt.body, u = new URL(url);
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          if (p === '/salon') return resolve({ status:200, json:{ data:{ name:'Coiffeur Steiner', currency:'CHF', phone:'+41 44 211 22 33', opening_hours:HOURS } } });
+          if (p === '/services') return resolve({ status:200, json:{ data:SERVICES } });
+          if (p === '/staff') return resolve({ status:200, json:{ data:STAFF } });
+          if (p === '/availability') {
+            var svc = SERVICES.filter(function(s){return s.id===u.searchParams.get('service_id');})[0];
+            var dur = svc ? svc.duration : 30, staff = u.searchParams.get('staff_id') || 'any';
+            var from = u.searchParams.get('from'), to = u.searchParams.get('to') || from, days = [], now = new Date();
+            for (var d = new Date(from+'T00:00:00'), end = new Date(to+'T00:00:00'); d <= end; d.setDate(d.getDate()+1)) {
+              var h = HOURS[DOW[d.getDay()]];
+              if (!h) { days.push({ date:iso(d), closed:true, slots:[] }); continue; }
+              var open = +h[0].slice(0,2)*60+ +h[0].slice(3), close = +h[1].slice(0,2)*60+ +h[1].slice(3), slots = [];
+              for (var m = open; m <= close-dur; m += 30) {
+                var hm = pad(Math.floor(m/60))+':'+pad(m%60);
+                var taken = (hash(iso(d)+'|'+staff+'|'+hm) % 10) < 3;
+                var past = (iso(d)===iso(now)) && (m <= now.getHours()*60+now.getMinutes());
+                slots.push({ time:hm, available: !taken && !past });
+              }
+              days.push({ date:iso(d), closed:false, slots:slots });
+            }
+            return resolve({ status:200, json:{ data:days } });
+          }
+          if (p === '/bookings') return resolve({ status:201, json:{ data:{ id:'bk_'+Date.now(), reference:'ST-'+String(hash(JSON.stringify(b)+Date.now())).slice(0,5), status:'confirmed' } } });
+          if (p === '/customers') { var em=(b.email||'').toLowerCase(); accounts[em]={name:b.name,phone:b.phone,password:b.password};
+            return resolve({ status:201, json:{ data:{ id:'cus_'+Date.now(), name:b.name, email:b.email, token:'tok' } } }); }
+          if (p === '/customers/login') { var e=(b.email||'').toLowerCase(), acc=accounts[e];
+            if (acc && acc.password!==b.password) return resolve({ status:401, json:{ error:'bad password' } });
+            var nm = acc ? acc.name : e.split('@')[0].replace(/\b\w/g,function(x){return x.toUpperCase();});
+            return resolve({ status:200, json:{ data:{ token:'tok', customer:{ id:'cus_x', name:nm, email:b.email, phone:acc?acc.phone:'' } } } }); }
+          resolve({ status:404, json:{ error:'not found '+p } });
+        }, 160 + Math.random()*180);
+      });
+    }
+
+    HairlistWidget.init({
+      shop: 'steiner', mode: 'native-inline', mount: '#booking', height: '660px',
+      color: '#b8860b', lang: 'de',
+      apiKey: 'DEMO_KEY',        // in production this reaches the real salon API
+      apiTransport: transport    // demo only — omit on a real site to use fetch
+    });
+  </script>
+</body>
+</html>
